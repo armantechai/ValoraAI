@@ -20,42 +20,57 @@ st.subheader("Intelligent Real Estate Valuation Platform powered by ML & AI")
 # ====================== OPENAI API KEY ======================
 api_key = None
 
-# Из Streamlit Secrets
-if "openai" in st.secrets and "api_key" in st.secrets["openai"]:
-    api_key = st.secrets["openai"]["api_key"]
+# 1. Streamlit Secrets (самый надёжный способ)
+if "openai" in st.secrets:
+    api_key = st.secrets["openai"].get("api_key") or st.secrets["openai"].get("API_KEY")
 elif "OPENAI_API_KEY" in st.secrets:
     api_key = st.secrets["OPENAI_API_KEY"]
 
-# Из переменных окружения
+# 2. Переменная окружения
 if not api_key:
     api_key = os.getenv("OPENAI_API_KEY")
 
-if not api_key:
-    st.error("🔑 OpenAI API ключ не найден!")
-    st.info("""
-    **Как добавить ключ:**
-    1. Зайди в Settings → Secrets
-    2. Вставь:
+# 3. Проверка ключа
+if not api_key or api_key.strip() == "" or not api_key.startswith("sk-"):
+    st.error("🔑 **OpenAI API ключ не найден или некорректный!**")
+    st.markdown("""
+    **Как исправить:**
+    1. Открой **Settings → Secrets**
+    2. Вставь точно такой текст:
+
     ```toml
     [openai]
-    api_key = "sk-ваш_ключ_здесь"
-    """)
+    api_key = "sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+""")
     st.stop()
 
-client = OpenAI(api_key=api_key)
+# Создаём клиента
+try:
+    client = OpenAI(api_key=api_key)
+    st.success("✅ OpenAI успешно подключён", icon="🔑")
+except Exception as e:
+    st.error(f"Ошибка подключения OpenAI: {e}")
+    st.stop()
 
 # ====================== ЗАГРУЗКА МОДЕЛЕЙ ======================
 @st.cache_resource
 def load_resources():
-    model = pickle.load(open("model.pkl", "rb"))
-    df = pd.read_csv("krisha_full_with_desc.csv")
-    embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    index = faiss.read_index("faiss_index.bin")
-    return model, df, embedding_model, index
+    try:
+        model = pickle.load(open("model.pkl", "rb"))
+        df = pd.read_csv("krisha_full_with_desc.csv")
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        index = faiss.read_index("faiss_index.bin")
+        return model, df, embedding_model, index
+    except FileNotFoundError as e:
+        st.error(f"❌ Файл не найден: {e}")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки: {e}")
+        st.stop()
 
 model, df, embedding_model, index = load_resources()
 
-# ====================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ======================
+# ====================== ФУНКЦИИ ======================
 def build_document(data):
     return f"""Комнаты: {data.get("rooms")}
 Площадь: {data.get("area")} м²
@@ -81,14 +96,12 @@ def rag_explanation(data):
 {query}
 ПОХОЖИЕ КВАРТИРЫ:
 {context}
-Оцени: дорого / дешево / нормально?
-Объясни почему. Сравни с рынком. Приведи 3 причины.
-Отвечай только по фактам, на русском.
+Оцени: дорого / дешево / нормально? Почему? Приведи 3 причины. Отвечай на русском.
 """
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Ты профессиональный аналитик недвижимости в Казахстане."},
+            {"role": "system", "content": "Ты профессиональный аналитик недвижимости."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.3
@@ -114,7 +127,7 @@ has_eurorepair = st.sidebar.checkbox("Евроремонт")
 new_building = st.sidebar.checkbox("Новостройка")
 luxury = st.sidebar.checkbox("Премиум")
 
-# ====================== АНАЛИЗ ======================
+# ====================== ЗАПУСК АНАЛИЗА ======================
 if st.button("🚀 Анализировать", type="primary"):
     floor_ratio = floor / total_floors if total_floors > 0 else 0
     features = [[
