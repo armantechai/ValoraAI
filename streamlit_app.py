@@ -48,40 +48,52 @@ district_coords = {
     "Астана": (51.1694, 71.4491), "Другой": (43.25, 76.95)
 }
 
-# ====================== ПАРСЕР ======================
+# ====================== УЛУЧШЕННЫЙ ПАРСЕР ======================
 def parse_listing_text(text):
     prompt = f"""
-Извлеки параметры из объявления. Верни только JSON.
+Ты эксперт по парсингу объявлений недвижимости с Krisha.kz.
+Извлеки максимум информации из текста ниже и верни **только** JSON.
 
-Текст:
+Текст объявления:
 {text}
 
-Формат:
+Верни JSON в таком формате (все поля обязательны, если не знаешь — null):
 {{
-  "rooms": число,
-  "area": число,
-  "floor": число,
-  "total_floors": число,
-  "district": "название района или null",
-  "has_furniture": true/false,
-  "has_eurorepair": true/false,
-  "new_building": true/false,
+  "rooms": число или null,
+  "area": число или null,
+  "floor": число или null,
+  "total_floors": число или null,
+  "district": "Наурызбайский" или "Алмалинский" и т.д. или null,
+  "has_furniture": true/false или null,
+  "has_eurorepair": true/false или null,
+  "new_building": true/false или null,
   "price": число или null
 }}
+
+Будь максимально точным.
 """
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
-            max_tokens=400
+            max_tokens=500
         )
-        parsed = json.loads(response.choices[0].message.content.strip())
+        content = response.choices[0].message.content.strip()
+        # На всякий случай очищаем возможный markdown
+        if content.startswith("```json"):
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif content.startswith("```"):
+            content = content.split("```")[1].strip()
+        
+        parsed = json.loads(content)
         return parsed
-    except:
+    except Exception as e:
+        st.error(f"Ошибка парсинга: {e}")
         return None
 
-# ====================== ФУНКЦИИ ======================
+# ====================== ОСТАЛЬНЫЕ ФУНКЦИИ ======================
 def build_document(data):
     return f"""Квартира:
 - Комнат: {data.get("rooms")}
@@ -92,6 +104,7 @@ def build_document(data):
 - Евроремонт: {"Есть" if data.get("has_eurorepair") else "Нет"}
 - Новостройка: {"Да" if data.get("new_building") else "Нет"}"""
 
+# hybrid_retrieve и rag_explanation оставляем как в предыдущей версии
 def hybrid_retrieve(data, k=6):
     query_text = build_document(data)
     query_vec = np.array([embedding_model.encode(query_text)]).astype("float32")
@@ -153,7 +166,7 @@ new_building = st.sidebar.checkbox("Новостройка")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📄 Парсинг объявления")
-raw_text = st.sidebar.text_area("Вставьте текст объявления", height=140)
+raw_text = st.sidebar.text_area("Вставьте текст объявления", height=160)
 
 if st.sidebar.button("🔍 Извлечь параметры из текста"):
     if raw_text.strip():
@@ -161,19 +174,19 @@ if st.sidebar.button("🔍 Извлечь параметры из текста")
             parsed = parse_listing_text(raw_text)
             if parsed:
                 st.session_state.parsed_data = parsed
-                st.sidebar.success("✅ Параметры извлечены и применены!")
+                st.sidebar.success("✅ Параметры успешно извлечены!")
             else:
-                st.sidebar.error("Не удалось распарсить")
+                st.sidebar.error("Не удалось распарсить объявление")
     else:
-        st.sidebar.warning("Введите текст")
+        st.sidebar.warning("Введите текст объявления")
 
 # Автозаполнение
 if st.session_state.parsed_data:
     p = st.session_state.parsed_data
-    if isinstance(p.get("rooms"), (int, float)): rooms = int(p.get("rooms"))
-    if isinstance(p.get("area"), (int, float)): area = float(p.get("area"))
-    if isinstance(p.get("floor"), (int, float)): floor = int(p.get("floor"))
-    if isinstance(p.get("total_floors"), (int, float)): total_floors = int(p.get("total_floors"))
+    if p.get("rooms") is not None: rooms = int(p.get("rooms"))
+    if p.get("area") is not None: area = float(p.get("area"))
+    if p.get("floor") is not None: floor = int(p.get("floor"))
+    if p.get("total_floors") is not None: total_floors = int(p.get("total_floors"))
     if p.get("district") in district_coords:
         district = p.get("district")
     if p.get("has_furniture") is not None: has_furniture = bool(p.get("has_furniture"))
@@ -223,4 +236,4 @@ if st.button("🚀 Проанализировать", type="primary"):
             "Разница": "{:,.0f} ₸"
         }), use_container_width=True, hide_index=True)
 
-st.caption("ValoraAI • Автоматический парсинг объявлений")
+st.caption("ValoraAI • Улучшенный парсер объявлений")
