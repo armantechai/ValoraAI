@@ -6,3 +6,4 @@ xgboost
 plotly
 requests
 joblib
+faiss-cpu
