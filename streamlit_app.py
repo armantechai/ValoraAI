@@ -284,36 +284,52 @@ if st.button("🚀 Проанализировать", type="primary"):
     floor / total_floors
     if total_floors > 0
     else 0
-    )
+)
 
-    luxury = int(
-    has_eurorepair
-    and new_building
-    )
+lat, lon = district_coords.get(
+    district,
+    (43.25, 76.95)
+)
 
-    features = [[
+# приблизительные расстояния от центра Алматы
+district_distance = {
+    "Алмалинский": 2.0,
+    "Бостандыкский": 5.0,
+    "Ауэзовский": 7.0,
+    "Медеуский": 4.0,
+    "Турксибский": 9.0,
+    "Жетысуский": 6.0,
+    "Наурызбайский": 12.0,
+    "Алатауский": 10.0,
+    "Астана": 0,
+    "Другой": 8.0
+}
+
+distance_to_center = district_distance.get(
+    district,
+    8.0
+)
+
+# цена за квадратный метр
+# нужна только потому, что модель была обучена с этим признаком
+
+price_per_m2 = 500000
+
+features = [[
     area,
+    rooms,
     floor,
     total_floors,
+    lat,
+    lon,
+    distance_to_center,
     floor_ratio,
-    int(has_furniture),
-    int(has_eurorepair),
-    int(new_building),
-    luxury
-    ]]
+    price_per_m2
+]]
 
-    st.write("Количество признаков:", len(features[0]))
-st.write("Признаки:", features[0])
-
-try:
-    st.write("Ожидаемые признаки:")
-    st.write(model.feature_names_in_)
-except:
-    st.write("feature_names_in_ недоступно")
-    
-    predicted_price = abs(
+predicted_price = abs(
     model.predict(features)[0]
-    )
+)
 
     data = {
         "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
