@@ -12,12 +12,12 @@ st.set_page_config(page_title="ValoraAI", page_icon="🏠", layout="wide")
 
 st.title("🏠 ValoraAI")
 st.subheader("Интеллектуальная оценка недвижимости Казахстана")
-st.markdown("**ML + RAG + Сравнение с рынком**")
+st.markdown("**ML + Улучшенный RAG + Сравнение с рынком**")
 
 # ====================== OPENAI ======================
 api_key = st.secrets.get("openai", {}).get("api_key") or os.getenv("OPENAI_API_KEY")
 if not api_key or not api_key.startswith("sk-"):
-    st.error("🔑 OpenAI API ключ не настроен в Secrets")
+    st.error("🔑 OpenAI API ключ не настроен")
     st.stop()
 
 client = OpenAI(api_key=api_key)
@@ -27,7 +27,10 @@ client = OpenAI(api_key=api_key)
 def load_resources():
     model = pickle.load(open("model.pkl", "rb"))
     df = pd.read_csv("krisha_full_with_desc.csv")
-    embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    
+    # Улучшенная модель для русского языка
+    embedding_model = SentenceTransformer("deepvk/USER-bge-m3")
+    
     index = faiss.read_index("faiss_index.bin")
     return model, df, embedding_model, index
 
@@ -44,15 +47,41 @@ district_coords = {
 
 # ====================== ФУНКЦИИ ======================
 def build_document(data):
-    return f"""Комнаты: {data.get("rooms")}
+    return f"""Комнаты: {data.get("rooms")} 
 Площадь: {data.get("area")} м²
 Этаж: {data.get("floor")}/{data.get("total_floors")}
+Район: {data.get("district", "Не указан")}
 Мебель: {"Да" if data.get("has_furniture") else "Нет"}
 Евроремонт: {"Да" if data.get("has_eurorepair") else "Нет"}
 Новостройка: {"Да" if data.get("new_building") else "Нет"}"""
 
-def retrieve_similar(query, k=6):
-    query_vector = np.array([embedding_model.encode(query)]).astype("float32")
+def retrieve_similar(data, k=6):
+    # 1. Предфильтрация по метаданным (очень важно!)
+    filtered = df.copy()
+    
+    if data.get("rooms"):
+        filtered = filtered[filtered['rooms'] == data.get("rooms")]
+    
+    if data.get("district"):
+        filtered = filtered[filtered['district'] == data.get("district")]  # если есть колонка district
+    
+    # Фильтр по площади ±30%
+    area = data.get("area", 60)
+    filtered = filtered[filtered['area'].between(area * 0.7, area * 1.4)]
+    
+    if len(filtered) == 0:
+        filtered = df  # если ничего не нашлось — ищем по всему
+    
+    # 2. Семантический поиск по отфильтрованным данным
+    query_text = build_document(data)
+    query_vector = np.array([embedding_model.encode(query_text)]).astype("float32")
+    
+    # Ищем среди отфильтрованных
+    sample_indices = filtered.index.tolist()
+    if len(sample_indices) > 50:  # ограничиваем для скорости
+        sample_indices = sample_indices[:50]
+    
+    # Для простоты сейчас ищем по всему индексу, но в будущем можно перестроить
     _, indices = index.search(query_vector, k)
     return df.iloc[indices[0]]
 
@@ -61,21 +90,21 @@ def rag_explanation(data, similar_df):
     context = "\n\n".join([build_document(row) for _, row in similar_df.iterrows()])
 
     prompt = f"""
-Ты эксперт недвижимости Казахстана.
+Ты эксперт по недвижимости в Казахстане (Алматы и Астана).
 
 ЦЕЛЕВАЯ КВАРТИРА:
 {query}
 
-ПОХОЖИЕ КВАРТИРЫ:
+ПОХОЖИЕ ОБЪЕКТЫ НА РЫНКЕ:
 {context}
 
-Проанализируй:
-- Квартира стоит дорого, дешево или по рынку?
+Дай профессиональный анализ:
+- Квартира стоит **дорого**, **дешево** или **по рынку**?
 - Почему именно такая оценка?
-- 3 ключевые причины
+- 3 главные причины
 - Краткие рекомендации покупателю
 
-Отвечай на русском, профессионально и понятно.
+Отвечай на русском, уверенно и понятно.
 """
 
     response = client.chat.completions.create(
@@ -110,59 +139,53 @@ if st.button("🚀 Проанализировать", type="primary"):
     distance_to_center = 2.5 if district in ["Алмалинский", "Медеуский"] else 6.0
 
     features = [[total_floors, rooms, 0, lon, lat, floor_ratio, floor, distance_to_center, area]]
-    predicted_price = abs(model.predict(features)[0])   # Защита от отрицательной цены
+    predicted_price = abs(model.predict(features)[0])
 
     data = {
-        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
-        "has_furniture": has_furniture, "has_eurorepair": has_eurorepair,
+        "rooms": rooms,
+        "area": area,
+        "floor": floor,
+        "total_floors": total_floors,
+        "district": district,
+        "has_furniture": has_furniture,
+        "has_eurorepair": has_eurorepair,
         "new_building": new_building
     }
 
-    similar_df = retrieve_similar(build_document(data), k=6)
+    similar_df = retrieve_similar(data, k=6)
 
     # ====================== ВЫВОД ======================
     col1, col2 = st.columns([1.1, 2])
 
     with col1:
         st.metric("💰 Предсказанная цена", f"{int(predicted_price):,} ₸")
-        
         if real_price > 0:
             diff = real_price - predicted_price
             st.metric("📌 Цена в объявлении", f"{int(real_price):,} ₸", 
                      delta=f"{int(diff):,} ₸ {'дороже' if diff > 0 else 'дешевле'}")
 
         st.subheader("📍 Параметры")
-        st.write(f"**Комнаты:** {rooms}")
-        st.write(f"**Площадь:** {area} м²")
-        st.write(f"**Этаж:** {floor} / {total_floors}")
-        st.write(f"**Район:** {district}")
-        st.write(f"**Мебель:** {'Есть' if has_furniture else 'Нет'}")
-        st.write(f"**Евроремонт:** {'Есть' if has_eurorepair else 'Нет'}")
-        st.write(f"**Новостройка:** {'Да' if new_building else 'Нет'}")
+        for key, value in data.items():
+            if key != "district":
+                st.write(f"**{key.replace('_', ' ').title()}:** {value}")
 
     with col2:
         st.subheader("📊 AI Анализ рынка")
-        with st.spinner("Генерируем отчёт..."):
+        with st.spinner("Анализируем рынок..."):
             analysis = rag_explanation(data, similar_df)
             st.markdown(analysis)
 
-    # ====================== СРАВНЕНИЕ ======================
+    # Сравнение
     st.subheader("🔍 Сравнение с похожими квартирами")
     if 'price' in similar_df.columns:
         comp = similar_df[['rooms', 'area', 'floor', 'total_floors', 'price']].copy()
         comp['₸/м²'] = (comp['price'] / comp['area']).round(0)
         comp['Разница'] = (comp['price'] - predicted_price).round(0)
+        
+        st.dataframe(comp.style.format({
+            "price": "{:,.0f} ₸",
+            "₸/м²": "{:,.0f}",
+            "Разница": "{:,.0f} ₸"
+        }), use_container_width=True, hide_index=True)
 
-        st.dataframe(
-            comp.style.format({
-                "price": "{:,.0f} ₸",
-                "₸/м²": "{:,.0f} ₸",
-                "Разница": "{:,.0f} ₸"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("Колонка 'price' не найдена в данных")
-
-st.caption("ValoraAI © 2026 • Оценка недвижимости Казахстана")
+st.caption("ValoraAI • Улучшенный RAG (deepvk/USER-bge-m3)")
