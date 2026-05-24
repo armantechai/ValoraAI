@@ -12,7 +12,7 @@ st.set_page_config(page_title="ValoraAI", page_icon="🏠", layout="wide")
 
 st.title("🏠 ValoraAI")
 st.subheader("Интеллектуальная оценка недвижимости Казахстана")
-st.markdown("**ML + Улучшенный RAG + Сравнение с рынком**")
+st.markdown("**ML + Оптимизированный RAG**")
 
 # ====================== OPENAI ======================
 api_key = st.secrets.get("openai", {}).get("api_key") or os.getenv("OPENAI_API_KEY")
@@ -28,8 +28,8 @@ def load_resources():
     model = pickle.load(open("model.pkl", "rb"))
     df = pd.read_csv("krisha_full_with_desc.csv")
     
-    # Улучшенная модель для русского языка
-    embedding_model = SentenceTransformer("deepvk/USER-bge-m3")
+    # Оптимальная модель для русского языка + совместима с текущим индексом
+    embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
     
     index = faiss.read_index("faiss_index.bin")
     return model, df, embedding_model, index
@@ -47,7 +47,7 @@ district_coords = {
 
 # ====================== ФУНКЦИИ ======================
 def build_document(data):
-    return f"""Комнаты: {data.get("rooms")} 
+    return f"""Комнаты: {data.get("rooms")}
 Площадь: {data.get("area")} м²
 Этаж: {data.get("floor")}/{data.get("total_floors")}
 Район: {data.get("district", "Не указан")}
@@ -56,32 +56,22 @@ def build_document(data):
 Новостройка: {"Да" if data.get("new_building") else "Нет"}"""
 
 def retrieve_similar(data, k=6):
-    # 1. Предфильтрация по метаданным (очень важно!)
+    # Предфильтрация по ключевым параметрам
     filtered = df.copy()
     
     if data.get("rooms"):
         filtered = filtered[filtered['rooms'] == data.get("rooms")]
     
-    if data.get("district"):
-        filtered = filtered[filtered['district'] == data.get("district")]  # если есть колонка district
-    
-    # Фильтр по площади ±30%
     area = data.get("area", 60)
-    filtered = filtered[filtered['area'].between(area * 0.7, area * 1.4)]
+    filtered = filtered[filtered['area'].between(area * 0.65, area * 1.45)]
     
-    if len(filtered) == 0:
-        filtered = df  # если ничего не нашлось — ищем по всему
+    if len(filtered) < 5:
+        filtered = df
     
-    # 2. Семантический поиск по отфильтрованным данным
+    # Семантический поиск
     query_text = build_document(data)
     query_vector = np.array([embedding_model.encode(query_text)]).astype("float32")
     
-    # Ищем среди отфильтрованных
-    sample_indices = filtered.index.tolist()
-    if len(sample_indices) > 50:  # ограничиваем для скорости
-        sample_indices = sample_indices[:50]
-    
-    # Для простоты сейчас ищем по всему индексу, но в будущем можно перестроить
     _, indices = index.search(query_vector, k)
     return df.iloc[indices[0]]
 
@@ -90,21 +80,21 @@ def rag_explanation(data, similar_df):
     context = "\n\n".join([build_document(row) for _, row in similar_df.iterrows()])
 
     prompt = f"""
-Ты эксперт по недвижимости в Казахстане (Алматы и Астана).
+Ты эксперт недвижимости Казахстана.
 
 ЦЕЛЕВАЯ КВАРТИРА:
 {query}
 
-ПОХОЖИЕ ОБЪЕКТЫ НА РЫНКЕ:
+ПОХОЖИЕ КВАРТИРЫ:
 {context}
 
-Дай профессиональный анализ:
-- Квартира стоит **дорого**, **дешево** или **по рынку**?
-- Почему именно такая оценка?
-- 3 главные причины
-- Краткие рекомендации покупателю
+Дай честный анализ:
+- Квартира стоит дорого, дешево или по рынку?
+- Почему?
+- 3 ключевые причины
+- Рекомендации покупателю
 
-Отвечай на русском, уверенно и понятно.
+Отвечай на русском, по делу.
 """
 
     response = client.chat.completions.create(
@@ -142,19 +132,13 @@ if st.button("🚀 Проанализировать", type="primary"):
     predicted_price = abs(model.predict(features)[0])
 
     data = {
-        "rooms": rooms,
-        "area": area,
-        "floor": floor,
-        "total_floors": total_floors,
-        "district": district,
-        "has_furniture": has_furniture,
-        "has_eurorepair": has_eurorepair,
-        "new_building": new_building
+        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
+        "district": district, "has_furniture": has_furniture,
+        "has_eurorepair": has_eurorepair, "new_building": new_building
     }
 
     similar_df = retrieve_similar(data, k=6)
 
-    # ====================== ВЫВОД ======================
     col1, col2 = st.columns([1.1, 2])
 
     with col1:
@@ -165,17 +149,17 @@ if st.button("🚀 Проанализировать", type="primary"):
                      delta=f"{int(diff):,} ₸ {'дороже' if diff > 0 else 'дешевле'}")
 
         st.subheader("📍 Параметры")
-        for key, value in data.items():
-            if key != "district":
-                st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+        st.write(f"**Комнаты:** {rooms}")
+        st.write(f"**Площадь:** {area} м²")
+        st.write(f"**Этаж:** {floor}/{total_floors}")
+        st.write(f"**Район:** {district}")
 
     with col2:
         st.subheader("📊 AI Анализ рынка")
-        with st.spinner("Анализируем рынок..."):
+        with st.spinner("Анализируем..."):
             analysis = rag_explanation(data, similar_df)
             st.markdown(analysis)
 
-    # Сравнение
     st.subheader("🔍 Сравнение с похожими квартирами")
     if 'price' in similar_df.columns:
         comp = similar_df[['rooms', 'area', 'floor', 'total_floors', 'price']].copy()
@@ -188,4 +172,4 @@ if st.button("🚀 Проанализировать", type="primary"):
             "Разница": "{:,.0f} ₸"
         }), use_container_width=True, hide_index=True)
 
-st.caption("ValoraAI • Улучшенный RAG (deepvk/USER-bge-m3)")
+st.caption("ValoraAI • RAG оптимизирован (paraphrase-multilingual-MiniLM-L12-v2)")
