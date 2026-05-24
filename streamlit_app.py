@@ -20,37 +20,26 @@ st.subheader("Intelligent Real Estate Valuation Platform powered by ML & AI")
 # ====================== OPENAI API KEY ======================
 api_key = None
 
-# 1. Streamlit Secrets (самый надёжный способ)
 if "openai" in st.secrets:
     api_key = st.secrets["openai"].get("api_key") or st.secrets["openai"].get("API_KEY")
 elif "OPENAI_API_KEY" in st.secrets:
     api_key = st.secrets["OPENAI_API_KEY"]
 
-# 2. Переменная окружения
 if not api_key:
     api_key = os.getenv("OPENAI_API_KEY")
 
-# 3. Проверка ключа
-if not api_key or api_key.strip() == "" or not api_key.startswith("sk-"):
-    st.error("🔑 **OpenAI API ключ не найден или некорректный!**")
-    st.markdown("""
-    **Как исправить:**
-    1. Открой **Settings → Secrets**
-    2. Вставь точно такой текст:
-
+if not api_key or not api_key.startswith("sk-"):
+    st.error("🔑 OpenAI API ключ не найден!")
+    st.info("""
+    Добавьте в **Settings → Secrets**:
     ```toml
     [openai]
-    api_key = "sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    api_key = "sk-ваш_ключ"
 """)
     st.stop()
 
-# Создаём клиента
-try:
-    client = OpenAI(api_key=api_key)
-    st.success("✅ OpenAI успешно подключён", icon="🔑")
-except Exception as e:
-    st.error(f"Ошибка подключения OpenAI: {e}")
-    st.stop()
+client = OpenAI(api_key=api_key)
+st.success("✅ OpenAI подключён", icon="🔑")
 
 # ====================== ЗАГРУЗКА МОДЕЛЕЙ ======================
 @st.cache_resource
@@ -61,11 +50,8 @@ def load_resources():
         embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         index = faiss.read_index("faiss_index.bin")
         return model, df, embedding_model, index
-    except FileNotFoundError as e:
-        st.error(f"❌ Файл не найден: {e}")
-        st.stop()
     except Exception as e:
-        st.error(f"❌ Ошибка загрузки: {e}")
+        st.error(f"Ошибка загрузки: {e}")
         st.stop()
 
 model, df, embedding_model, index = load_resources()
@@ -101,7 +87,7 @@ def rag_explanation(data):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Ты профессиональный аналитик недвижимости."},
+            {"role": "system", "content": "Ты профессиональный аналитик недвижимости в Казахстане."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.3
@@ -127,7 +113,7 @@ has_eurorepair = st.sidebar.checkbox("Евроремонт")
 new_building = st.sidebar.checkbox("Новостройка")
 luxury = st.sidebar.checkbox("Премиум")
 
-# ====================== ЗАПУСК АНАЛИЗА ======================
+# ====================== АНАЛИЗ ======================
 if st.button("🚀 Анализировать", type="primary"):
     floor_ratio = floor / total_floors if total_floors > 0 else 0
     features = [[
