@@ -393,7 +393,7 @@ if st.button("🚀 Проанализировать", type="primary"):
         pickable=True
     )
     
-        view = pdk.ViewState(
+    view = pdk.ViewState(
         latitude=lat,
         longitude=lon,
         zoom=10
