@@ -111,12 +111,37 @@ luxury = st.sidebar.checkbox("Премиум")
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Анализировать", type="primary"):
     floor_ratio = floor / total_floors if total_floors > 0 else 0
+
     features = [[
-        area, floor, total_floors, floor_ratio,
-        int(has_furniture), int(has_eurorepair),
-        int(new_building), int(luxury)
+        area, 
+        floor, 
+        total_floors, 
+        floor_ratio,
+        int(has_furniture), 
+        int(has_eurorepair),
+        int(new_building), 
+        int(luxury)
     ]]
-    predicted_price = model.predict(features)[0]
+
+    # === ОТЛАДКА ===
+    st.write("🔍 **Отладка модели:**")
+    st.write(f"Количество признаков в features: **{len(features[0])}**")
+    
+    try:
+        if hasattr(model, 'n_features_in_'):
+            st.write(f"Модель ожидает признаков: **{model.n_features_in_}**")
+        if hasattr(model, 'feature_names_in_'):
+            st.write("Названия признаков:", model.feature_names_in_)
+    except:
+        pass
+
+    # Попытка предсказания
+    try:
+        predicted_price = model.predict(features)[0]
+    except Exception as e:
+        st.error(f"Ошибка предсказания: {e}")
+        st.stop()
+
     data = {
         "rooms": rooms,
         "area": area,
@@ -126,13 +151,17 @@ if st.button("🚀 Анализировать", type="primary"):
         "has_eurorepair": has_eurorepair,
         "new_building": new_building
     }
+
     col1, col2 = st.columns([1, 2])
+
     with col1:
         st.metric("💰 Предсказанная цена", f"{int(predicted_price):,} ₸")
+
     with col2:
         st.subheader("📊 AI анализ рынка")
         with st.spinner("Анализируем рынок..."):
             st.markdown(rag_explanation(data))
-        st.subheader("🧠 Карточка квартиры")
-        with st.spinner("Генерируем описание..."):
-            st.markdown(summarize_listing(data))
+
+    st.subheader("🧠 Карточка квартиры")
+    with st.spinner("Генерируем описание..."):
+        st.markdown(summarize_listing(data))
