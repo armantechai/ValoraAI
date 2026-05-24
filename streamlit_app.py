@@ -376,7 +376,35 @@ if st.button("🚀 Проанализировать", type="primary"):
     st.subheader(
         "🔍 Сравнение с похожими квартирами"
     )
-
+    # ====================== КАРТА ======================
+    import pydeck as pdk
+    
+    st.subheader("🗺️ Карта недвижимости")
+    
+    map_df = similar_df[
+        ['lat', 'lon']
+    ].dropna()
+    
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=map_df,
+        get_position='[lon, lat]',
+        radius_min_pixels=8,
+        pickable=True
+    )
+    
+        view = pdk.ViewState(
+        latitude=lat,
+        longitude=lon,
+        zoom=10
+    )
+    
+    st.pydeck_chart(
+        pdk.Deck(
+            layers=[layer],
+            initial_view_state=view
+        )
+    )
     if 'price' in similar_df.columns:
 
         comp = similar_df[
