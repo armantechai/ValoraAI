@@ -83,6 +83,7 @@ def rag_explanation(data, similar_df):
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
+        max_tokens=400
     )
     return response.choices[0].message.content
 
