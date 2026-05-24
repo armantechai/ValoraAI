@@ -149,4 +149,69 @@ if 'parsed_data' not in st.session_state:
 rooms = st.sidebar.selectbox("Комнаты", [1,2,3,4,5], index=1)
 area = st.sidebar.number_input("Площадь (м²)", 10, 500, 60)
 floor = st.sidebar.number_input("Этаж", 1, 30, 3)
-total_f
+total_floors = st.sidebar.number_input("Всего этажей", 1, 30, 9)
+district = st.sidebar.selectbox("Район", list(district_coords.keys()), index=0)
+
+has_furniture = st.sidebar.checkbox("Мебель", True)
+has_eurorepair = st.sidebar.checkbox("Евроремонт")
+new_building = st.sidebar.checkbox("Новостройка")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📄 Парсинг объявления")
+raw_text = st.sidebar.text_area("Вставьте текст объявления", height=140)
+
+if st.sidebar.button("🔍 Извлечь параметры из текста"):
+    if raw_text.strip():
+        with st.spinner("Парсим объявление..."):
+            parsed = parse_listing_text(raw_text)
+            if parsed:
+                st.session_state.parsed_data = parsed
+                st.sidebar.success("✅ Параметры извлечены!")
+            else:
+                st.sidebar.error("Не удалось распарсить")
+    else:
+        st.sidebar.warning("Введите текст")
+
+# Автозаполнение
+if st.session_state.parsed_data:
+    p = st.session_state.parsed_data
+    if isinstance(p.get("rooms"), (int, float)): rooms = int(p.get("rooms"))
+    if isinstance(p.get("area"), (int, float)): area = float(p.get("area"))
+    if isinstance(p.get("floor"), (int, float)): floor = int(p.get("floor"))
+    if isinstance(p.get("total_floors"), (int, float)): total_floors = int(p.get("total_floors"))
+    if p.get("district") in district_coords:
+        district = p.get("district")
+    if p.get("has_furniture") is not None: has_furniture = p.get("has_furniture")
+    if p.get("has_eurorepair") is not None: has_eurorepair = p.get("has_eurorepair")
+    if p.get("new_building") is not None: new_building = p.get("new_building")
+
+# ====================== АНАЛИЗ ======================
+if st.button("🚀 Проанализировать", type="primary"):
+    floor_ratio = floor / total_floors if total_floors > 0 else 0
+    lat, lon = district_coords.get(district, (43.25, 76.95))
+
+    features = [[total_floors, rooms, 0, lon, lat, floor_ratio, floor, 6.0, area]]
+    predicted_price = abs(model.predict(features)[0])
+
+    data = {
+        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
+        "district": district, "has_furniture": has_furniture,
+        "has_eurorepair": has_eurorepair, "new_building": new_building
+    }
+
+    similar_df = hybrid_retrieve(data, k=6)
+
+    col1, col2 = st.columns([1.1, 2])
+
+    with col1:
+        st.metric("💰 Предсказанная цена", f"{int(predicted_price):,} ₸")
+        st.subheader("📍 Параметры")
+        st.write(f"**Комнаты:** {rooms}")
+        st.write(f"**Площадь:** {area} м²")
+        st.write(f"**Этаж:** {floor}/{total_floors}")
+        st.write(f"**Район:** {district}")
+
+    with col2:
+        st.subheader("📊 AI Анализ рынка")
+        with st.spinner("Генерируем отчёт..."):
+            analysis = rag_explanation(data
