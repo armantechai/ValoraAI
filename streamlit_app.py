@@ -432,4 +432,4 @@ if st.button("🚀 Проанализировать", type="primary"):
             hide_index=True
         )
 
-st.caption("ValoraAI • Улучшенный парсер объявлений")
+st.caption("ValoraAI © 2026 • Оценка недвижимости Казахстана")
