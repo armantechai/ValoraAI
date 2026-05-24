@@ -376,7 +376,34 @@ if st.button("🚀 Проанализировать", type="primary"):
     st.subheader(
         "🔍 Сравнение с похожими квартирами"
     )
-    # ====================== КАРТА ======================
+    
+    if 'price' in similar_df.columns:
+
+        comp = similar_df[
+            ['rooms', 'area', 'floor',
+             'total_floors', 'price']
+        ].copy()
+
+        comp['₸/м²'] = (
+            comp['price'] /
+            comp['area']
+        ).round(0)
+
+        comp['Разница'] = (
+            comp['price'] -
+            predicted_price
+        ).round(0)
+
+        st.dataframe(
+            comp.style.format({
+                "price": "{:,.0f} ₸",
+                "₸/м²": "{:,.0f}",
+                "Разница": "{:,.0f} ₸"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+        # ====================== КАРТА ======================
     import pydeck as pdk
 
 st.subheader("🗺️ Карта похожих объектов")
@@ -434,32 +461,5 @@ if (
             tooltip=tooltip
         )
     )
-    
-    if 'price' in similar_df.columns:
-
-        comp = similar_df[
-            ['rooms', 'area', 'floor',
-             'total_floors', 'price']
-        ].copy()
-
-        comp['₸/м²'] = (
-            comp['price'] /
-            comp['area']
-        ).round(0)
-
-        comp['Разница'] = (
-            comp['price'] -
-            predicted_price
-        ).round(0)
-
-        st.dataframe(
-            comp.style.format({
-                "price": "{:,.0f} ₸",
-                "₸/м²": "{:,.0f}",
-                "Разница": "{:,.0f} ₸"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
 
 st.caption("ValoraAI • Улучшенный парсер объявлений")
