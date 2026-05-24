@@ -17,7 +17,7 @@ st.set_page_config(
 st.title("🏠 ValoraAI")
 st.subheader("Intelligent Real Estate Valuation Platform powered by ML & AI")
 
-# ====================== OPENAI API KEY ======================
+# ====================== OPENAI ======================
 api_key = None
 if "openai" in st.secrets:
     api_key = st.secrets["openai"].get("api_key") or st.secrets["openai"].get("API_KEY")
@@ -49,6 +49,20 @@ def load_resources():
         st.stop()
 
 model, df, embedding_model, index = load_resources()
+
+# ====================== СПРАВОЧНИК КООРДИНАТ ======================
+district_coords = {
+    "Алмалинский": (43.2567, 76.9286),
+    "Бостандыкский": (43.2220, 76.8512),
+    "Ауэзовский": (43.2560, 76.8300),
+    "Медеуский": (43.2639, 76.9780),
+    "Турксибский": (43.3170, 76.9000),
+    "Жетысуский": (43.3000, 76.9500),
+    "Наурызбайский": (43.1800, 76.8000),
+    "Алатауский": (43.2500, 76.7500),
+    "Астана": (51.1694, 71.4491),
+    "Другой": (43.25, 76.95)
+}
 
 # ====================== ФУНКЦИИ ======================
 def build_document(data):
@@ -109,8 +123,7 @@ area = st.sidebar.number_input("Площадь (м²)", 10, 500, 60)
 floor = st.sidebar.number_input("Этаж", 1, 30, 3)
 total_floors = st.sidebar.number_input("Всего этажей", 1, 30, 9)
 
-# Новые поля для соответствия модели
-location = st.sidebar.selectbox("Район / Город", ["Алматы - Центр", "Алматы - Другие", "Астана", "Другой"])
+district = st.sidebar.selectbox("Район", list(district_coords.keys()))
 has_furniture = st.sidebar.checkbox("Мебель", True)
 has_eurorepair = st.sidebar.checkbox("Евроремонт")
 new_building = st.sidebar.checkbox("Новостройка")
@@ -120,11 +133,14 @@ luxury = st.sidebar.checkbox("Премиум")
 if st.button("🚀 Анализировать", type="primary"):
     floor_ratio = floor / total_floors if total_floors > 0 else 0
 
-    # Примерные значения для недостающих признаков
-    price_per_m2 = 0  # модель может не использовать его при предсказании
-    lon = 76.95 if "Алматы" in location else 71.43  # примерные координаты
-    lat = 43.25 if "Алматы" in location else 51.17
-    distance_to_center = 3.0 if "Центр" in location else 8.0
+    lat, lon = district_coords[district]
+    
+    # Примерное расстояние до центра (упрощённо)
+    distance_to_center = 2.5 if district in ["Алмалинский", "Медеуский"] else \
+                        5.0 if district in ["Бостандыкский", "Ауэзовский"] else 8.0
+
+    # price_per_m2 оставляем 0 (модель его может игнорировать при predict)
+    price_per_m2 = 0
 
     features = [[
         total_floors,      # 1
