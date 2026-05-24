@@ -14,6 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
+st.title("DEMO")
 st.title("🏠 ValoraAI")
 st.subheader("Intelligent Real Estate Valuation Platform powered by ML & AI")
 
