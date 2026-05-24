@@ -376,7 +376,35 @@ if st.button("🚀 Проанализировать", type="primary"):
     st.subheader(
         "🔍 Сравнение с похожими квартирами"
     )
+    # ====================== КАРТА ======================
+    import pydeck as pdk
     
+    st.subheader("🗺️ Карта недвижимости")
+    
+    map_df = similar_df[
+        ['lat', 'lon']
+    ].dropna()
+    
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=map_df,
+        get_position='[lon, lat]',
+        radius_min_pixels=8,
+        pickable=True
+    )
+    
+    view = pdk.ViewState(
+        latitude=lat,
+        longitude=lon,
+        zoom=10
+    )
+    
+    st.pydeck_chart(
+        pdk.Deck(
+            layers=[layer],
+            initial_view_state=view
+        )
+    )
     if 'price' in similar_df.columns:
 
         comp = similar_df[
@@ -403,63 +431,5 @@ if st.button("🚀 Проанализировать", type="primary"):
             use_container_width=True,
             hide_index=True
         )
-        # ====================== КАРТА ======================
-    import pydeck as pdk
-
-st.subheader("🗺️ Карта похожих объектов")
-
-if (
-    'lat' in similar_df.columns and
-    'lon' in similar_df.columns
-):
-
-    map_df = similar_df.copy()
-
-    map_df = map_df.dropna(
-        subset=["lat", "lon"]
-    )
-
-    # если каких-то колонок нет
-    if 'address' not in map_df.columns:
-        map_df['address'] = "Адрес неизвестен"
-
-    if 'price' not in map_df.columns:
-        map_df['price'] = 0
-
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=map_df,
-        get_position='[lon, lat]',
-        get_radius=150,
-        pickable=True
-    )
-
-    view = pdk.ViewState(
-        latitude=lat,
-        longitude=lon,
-        zoom=11
-    )
-
-    tooltip = {
-        "html": """
-        <b>Адрес:</b> {address}<br/>
-        <b>Комнаты:</b> {rooms}<br/>
-        <b>Площадь:</b> {area} м²<br/>
-        <b>Этаж:</b> {floor}/{total_floors}<br/>
-        <b>Цена:</b> {price}
-        """,
-        "style": {
-            "backgroundColor": "white",
-            "color": "black"
-        }
-    }
-
-    st.pydeck_chart(
-        pdk.Deck(
-            layers=[layer],
-            initial_view_state=view,
-            tooltip=tooltip
-        )
-    )
 
 st.caption("ValoraAI • Улучшенный парсер объявлений")
