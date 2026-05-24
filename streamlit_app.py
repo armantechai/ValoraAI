@@ -39,7 +39,7 @@ def load_resources():
 
 model, df, embedding_model, index, bm25 = load_resources()
 
-# ====================== СПРАВОЧНИК РАЙОНОВ ======================
+# ====================== СПРАВОЧНИК ======================
 district_coords = {
     "Алмалинский": (43.2567, 76.9286),
     "Бостандыкский": (43.2220, 76.8512),
@@ -56,12 +56,12 @@ district_coords = {
 # ====================== ПАРСЕР ======================
 def parse_listing_text(text):
     prompt = f"""
-Извлеки параметры из объявления о продаже квартиры. Верни только JSON.
+Извлеки параметры из объявления. Верни только JSON.
 
 Текст:
 {text}
 
-Формат (строго JSON):
+Формат:
 {{
   "rooms": число,
   "area": число,
@@ -71,7 +71,6 @@ def parse_listing_text(text):
   "has_furniture": true/false,
   "has_eurorepair": true/false,
   "new_building": true/false,
-  "luxury": true/false,
   "price": число или null
 }}
 """
@@ -87,7 +86,7 @@ def parse_listing_text(text):
     except:
         return None
 
-# ====================== ОСНОВНЫЕ ФУНКЦИИ ======================
+# ====================== ФУНКЦИИ ======================
 def build_document(data):
     return f"""Квартира:
 - Комнат: {data.get("rooms")}
@@ -131,7 +130,7 @@ def rag_explanation(data, similar_df):
 - 3 ключевые причины
 - Рекомендации покупателю
 
-Отвечай уверенно и по делу на русском.
+Отвечай уверенно и по делу.
 """
 
     response = client.chat.completions.create(
@@ -144,50 +143,10 @@ def rag_explanation(data, similar_df):
 # ====================== SIDEBAR ======================
 st.sidebar.header("📋 Параметры квартиры")
 
-# Session State для автозаполнения
 if 'parsed_data' not in st.session_state:
     st.session_state.parsed_data = None
 
 rooms = st.sidebar.selectbox("Комнаты", [1,2,3,4,5], index=1)
 area = st.sidebar.number_input("Площадь (м²)", 10, 500, 60)
 floor = st.sidebar.number_input("Этаж", 1, 30, 3)
-total_floors = st.sidebar.number_input("Всего этажей", 1, 30, 9)
-district = st.sidebar.selectbox("Район", list(district_coords.keys()), index=0)
-
-has_furniture = st.sidebar.checkbox("Мебель", True)
-has_eurorepair = st.sidebar.checkbox("Евроремонт")
-new_building = st.sidebar.checkbox("Новостройка")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📄 Парсинг объявления")
-raw_text = st.sidebar.text_area("Вставьте текст объявления", height=140)
-
-if st.sidebar.button("🔍 Извлечь параметры из текста"):
-    if raw_text.strip():
-        with st.spinner("Парсим..."):
-            parsed = parse_listing_text(raw_text)
-            if parsed:
-                st.session_state.parsed_data = parsed
-                st.sidebar.success("✅ Параметры извлечены и применены!")
-            else:
-                st.sidebar.error("Не удалось распарсить")
-    else:
-        st.sidebar.warning("Введите текст объявления")
-
-# Автозаполнение боковой панели
-if st.session_state.parsed_data:
-    p = st.session_state.parsed_data
-    rooms = p.get("rooms", rooms) if p.get("rooms") else rooms
-    area = p.get("area", area) if p.get("area") else area
-    floor = p.get("floor", floor) if p.get("floor") else floor
-    total_floors = p.get("total_floors", total_floors) if p.get("total_floors") else total_floors
-    if p.get("district") in district_coords:
-        district = p.get("district")
-    has_furniture = p.get("has_furniture", has_furniture)
-    has_eurorepair = p.get("has_eurorepair", has_eurorepair)
-    new_building = p.get("new_building", new_building)
-
-# ====================== АНАЛИЗ ======================
-if st.button("🚀 Проанализировать", type="primary"):
-    floor_ratio = floor / total_floors if total_floors > 0 else 0
-    lat, lon = district_coords.get(district, (43.
+total_f
