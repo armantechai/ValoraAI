@@ -34,18 +34,28 @@ if not api_key or not api_key.startswith("sk-"):
 
 client = OpenAI(api_key=api_key)
 st.success("✅ OpenAI подключён", icon="🔑")
+st.info("👇 Настрой параметры слева и нажми «Анализировать»")
 
 # ====================== ЗАГРУЗКА МОДЕЛЕЙ ======================
-@st.cache_resource
+@st.cache_resource(show_spinner="Загружаем модели...")
 def load_resources():
     try:
-        model = pickle.load(open("model.pkl", "rb"))
-        df = pd.read_csv("krisha_full_with_desc.csv")
-        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-        index = faiss.read_index("faiss_index.bin")
+        with st.spinner("Загружаем модель ценообразования..."):
+            model = pickle.load(open("model.pkl", "rb"))
+        
+        with st.spinner("Загружаем базу квартир..."):
+            df = pd.read_csv("krisha_full_with_desc.csv")
+        
+        with st.spinner("Загружаем эмбеддинги..."):
+            embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        
+        with st.spinner("Загружаем индекс поиска..."):
+            index = faiss.read_index("faiss_index.bin")
+            
         return model, df, embedding_model, index
     except Exception as e:
         st.error(f"Ошибка загрузки: {e}")
+        st.info("Проверь, что все файлы (model.pkl, faiss_index.bin, krisha_full_with_desc.csv) загружены в репозиторий")
         st.stop()
 
 model, df, embedding_model, index = load_resources()
