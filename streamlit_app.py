@@ -302,6 +302,15 @@ if st.button("🚀 Проанализировать", type="primary"):
     luxury
     ]]
 
+    st.write("Количество признаков:", len(features[0]))
+st.write("Признаки:", features[0])
+
+try:
+    st.write("Ожидаемые признаки:")
+    st.write(model.feature_names_in_)
+except:
+    st.write("feature_names_in_ недоступно")
+    
     predicted_price = abs(
     model.predict(features)[0]
     )
