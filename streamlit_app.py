@@ -41,16 +41,11 @@ model, df, embedding_model, index, bm25 = load_resources()
 
 # ====================== СПРАВОЧНИК ======================
 district_coords = {
-    "Алмалинский": (43.2567, 76.9286),
-    "Бостандыкский": (43.2220, 76.8512),
-    "Ауэзовский": (43.2560, 76.8300),
-    "Медеуский": (43.2639, 76.9780),
-    "Турксибский": (43.3170, 76.9000),
-    "Жетысуский": (43.3000, 76.9500),
-    "Наурызбайский": (43.1800, 76.8000),
-    "Алатауский": (43.2500, 76.7500),
-    "Астана": (51.1694, 71.4491),
-    "Другой": (43.25, 76.95)
+    "Алмалинский": (43.2567, 76.9286), "Бостандыкский": (43.2220, 76.8512),
+    "Ауэзовский": (43.2560, 76.8300), "Медеуский": (43.2639, 76.9780),
+    "Турксибский": (43.3170, 76.9000), "Жетысуский": (43.3000, 76.9500),
+    "Наурызбайский": (43.1800, 76.8000), "Алатауский": (43.2500, 76.7500),
+    "Астана": (51.1694, 71.4491), "Другой": (43.25, 76.95)
 }
 
 # ====================== ПАРСЕР ======================
@@ -166,7 +161,7 @@ if st.sidebar.button("🔍 Извлечь параметры из текста")
             parsed = parse_listing_text(raw_text)
             if parsed:
                 st.session_state.parsed_data = parsed
-                st.sidebar.success("✅ Параметры извлечены!")
+                st.sidebar.success("✅ Параметры извлечены и применены!")
             else:
                 st.sidebar.error("Не удалось распарсить")
     else:
@@ -181,9 +176,9 @@ if st.session_state.parsed_data:
     if isinstance(p.get("total_floors"), (int, float)): total_floors = int(p.get("total_floors"))
     if p.get("district") in district_coords:
         district = p.get("district")
-    if p.get("has_furniture") is not None: has_furniture = p.get("has_furniture")
-    if p.get("has_eurorepair") is not None: has_eurorepair = p.get("has_eurorepair")
-    if p.get("new_building") is not None: new_building = p.get("new_building")
+    if p.get("has_furniture") is not None: has_furniture = bool(p.get("has_furniture"))
+    if p.get("has_eurorepair") is not None: has_eurorepair = bool(p.get("has_eurorepair"))
+    if p.get("new_building") is not None: new_building = bool(p.get("new_building"))
 
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Проанализировать", type="primary"):
@@ -214,4 +209,18 @@ if st.button("🚀 Проанализировать", type="primary"):
     with col2:
         st.subheader("📊 AI Анализ рынка")
         with st.spinner("Генерируем отчёт..."):
-            analysis = rag_explanation(data
+            analysis = rag_explanation(data, similar_df)
+            st.markdown(analysis)
+
+    st.subheader("🔍 Сравнение с похожими квартирами")
+    if 'price' in similar_df.columns:
+        comp = similar_df[['rooms', 'area', 'floor', 'total_floors', 'price']].copy()
+        comp['₸/м²'] = (comp['price'] / comp['area']).round(0)
+        comp['Разница'] = (comp['price'] - predicted_price).round(0)
+        st.dataframe(comp.style.format({
+            "price": "{:,.0f} ₸",
+            "₸/м²": "{:,.0f}",
+            "Разница": "{:,.0f} ₸"
+        }), use_container_width=True, hide_index=True)
+
+st.caption("ValoraAI • Автоматический парсинг объявлений")
