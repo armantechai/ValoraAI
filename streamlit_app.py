@@ -37,7 +37,6 @@ if not api_key or not api_key.startswith("sk-"):
     api_key = "sk-ваш_ключ"
 """)
     st.stop()
-
 client = OpenAI(api_key=api_key)
 st.success("✅ OpenAI подключён", icon="🔑")
 
@@ -51,9 +50,8 @@ def load_resources():
         index = faiss.read_index("faiss_index.bin")
         return model, df, embedding_model, index
     except Exception as e:
-        st.error(f"Ошибка загрузки: {e}")
+        st.error(f"Ошибка загрузки файлов: {e}")
         st.stop()
-
 model, df, embedding_model, index = load_resources()
 
 # ====================== ФУНКЦИИ ======================
@@ -65,13 +63,11 @@ def build_document(data):
 Мебель: {data.get("has_furniture")}
 Евроремонт: {data.get("has_eurorepair")}
 Новостройка: {data.get("new_building")}"""
-
 def retrieve_similar(query, k=5):
     query_vector = embedding_model.encode(query)
     query_vector = np.array([query_vector]).astype("float32")
     _, indices = index.search(query_vector, k)
     return df.iloc[indices[0]]
-
 def rag_explanation(data):
     query = build_document(data)
     similar = retrieve_similar(query, 5)
@@ -93,7 +89,6 @@ def rag_explanation(data):
         temperature=0.3
     )
     return response.choices[0].message.content
-
 def summarize_listing(data):
     prompt = f"Составь краткую карточку квартиры:\n{build_document(data)}"
     response = client.chat.completions.create(
