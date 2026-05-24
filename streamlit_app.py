@@ -227,12 +227,13 @@ def rag_explanation(data, similar_df):
 Пиши кратко и по делу.
 """
 
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
-        input=prompt
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
     )
 
-    return response.output_text
+    return response.choices[0].message.content
 # ====================== SIDEBAR ======================
 st.sidebar.header("📋 Параметры квартиры")
 
