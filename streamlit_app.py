@@ -27,15 +27,54 @@ client = OpenAI(api_key=api_key)
 # ====================== ЗАГРУЗКА ======================
 @st.cache_resource(show_spinner="Загружаем модели...")
 def load_resources():
+
+    # Проверка файлов
+    required_files = [
+        "model.pkl",
+        "krisha_full_with_desc.csv",
+        "faiss_index.bin"
+    ]
+
+    for file in required_files:
+        if not os.path.exists(file):
+            st.error(f"❌ Не найден файл: {file}")
+            st.stop()
+
+    # Загрузка модели
     model = pickle.load(open("model.pkl", "rb"))
+
+    # Датасет
     df = pd.read_csv("krisha_full_with_desc.csv")
-    embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
+    # Проверка description
+    if 'description' not in df.columns:
+        df['description'] = ''
+
+    df['description'] = (
+        df['description']
+        .fillna('')
+        .astype(str)
+    )
+
+    # Embedding модель
+    embedding_model = SentenceTransformer(
+        "paraphrase-multilingual-MiniLM-L12-v2",
+        device="cpu"
+    )
+
+    # FAISS
     index = faiss.read_index("faiss_index.bin")
-    
-    tokenized_corpus = [str(doc).split() for doc in df.get('description', '').fillna('')]
+
+    # BM25
+    tokenized_corpus = [
+        doc.split()
+        for doc in df['description']
+    ]
+
     bm25 = BM25Okapi(tokenized_corpus)
-    
+
     return model, df, embedding_model, index, bm25
+
 
 model, df, embedding_model, index, bm25 = load_resources()
 
@@ -106,48 +145,94 @@ def build_document(data):
 
 # hybrid_retrieve и rag_explanation оставляем как в предыдущей версии
 def hybrid_retrieve(data, k=6):
+
     query_text = build_document(data)
-    query_vec = np.array([embedding_model.encode(query_text)]).astype("float32")
-    _, dense_idx = index.search(query_vec, k*3)
+
+    # Dense поиск
+    query_vec = embedding_model.encode(
+        query_text,
+        normalize_embeddings=True
+    )
+
+    query_vec = np.array(
+        [query_vec]
+    ).astype("float32")
+
+    _, dense_idx = index.search(
+        query_vec,
+        k * 3
+    )
+
     dense_df = df.iloc[dense_idx[0]]
-    
+
+    # BM25 поиск
     tokenized_query = query_text.split()
-    bm25_scores = bm25.get_scores(tokenized_query)
-    bm25_idx = np.argsort(bm25_scores)[-k*3:][::-1]
+
+    bm25_scores = bm25.get_scores(
+        tokenized_query
+    )
+
+    bm25_idx = np.argsort(
+        bm25_scores
+    )[-k*3:][::-1]
+
     bm25_df = df.iloc[bm25_idx]
-    
-    combined = pd.concat([dense_df, bm25_df]).drop_duplicates().head(k)
+
+    # объединение
+    combined = pd.concat([
+        dense_df,
+        bm25_df
+    ])
+
+    combined = (
+        combined
+        .drop_duplicates()
+        .fillna("Не указано")
+        .head(k)
+    )
+
     return combined
 
 def rag_explanation(data, similar_df):
+
     query = build_document(data)
-    context = "\n\n".join([build_document(row) for _, row in similar_df.iterrows()])
+
+    similar_df = similar_df.fillna(
+        "Не указано"
+    )
+
+    context = "\n\n".join([
+        build_document(row)
+        for _, row in similar_df.iterrows()
+    ])
 
     prompt = f"""
-Ты — профессиональный риелтор-аналитик в Казахстане.
+Ты профессиональный аналитик недвижимости Казахстана.
 
-**ЦЕЛЕВАЯ КВАРТИРА:**
+Целевая квартира:
+
 {query}
 
-**ПОХОЖИЕ ОБЪЕКТЫ:**
+Похожие объекты:
+
 {context}
 
-Дай чёткий анализ:
-- Дорого / Дешево / По рынку?
-- Почему?
-- 3 ключевые причины
-- Рекомендации покупателю
+Сделай анализ:
 
-Отвечай уверенно и по делу.
+1. Дорого/дешево/по рынку
+2. Почему
+3. 3 причины
+4. Рекомендации покупателю
+
+Пиши кратко и по делу.
 """
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.35
+        input=prompt
     )
-    return response.choices[0].message.content
 
+    return response.output_text
 # ====================== SIDEBAR ======================
 st.sidebar.header("📋 Параметры квартиры")
 
@@ -195,11 +280,31 @@ if st.session_state.parsed_data:
 
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Проанализировать", type="primary"):
-    floor_ratio = floor / total_floors if total_floors > 0 else 0
-    lat, lon = district_coords.get(district, (43.25, 76.95))
+    floor_ratio = (
+    floor / total_floors
+    if total_floors > 0
+    else 0
+    )
 
-    features = [[total_floors, rooms, 0, lon, lat, floor_ratio, floor, 6.0, area]]
-    predicted_price = abs(model.predict(features)[0])
+    luxury = int(
+    has_eurorepair
+    and new_building
+    )
+
+    features = [[
+    area,
+    floor,
+    total_floors,
+    floor_ratio,
+    int(has_furniture),
+    int(has_eurorepair),
+    int(new_building),
+    luxury
+    ]]
+
+    predicted_price = abs(
+    model.predict(features)[0]
+    )
 
     data = {
         "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
