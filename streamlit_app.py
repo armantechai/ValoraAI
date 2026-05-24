@@ -281,61 +281,63 @@ if st.session_state.parsed_data:
 
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Проанализировать", type="primary"):
+
     floor_ratio = (
-    floor / total_floors
-    if total_floors > 0
-    else 0
-)
+        floor / total_floors
+        if total_floors > 0
+        else 0
+    )
 
-lat, lon = district_coords.get(
-    district,
-    (43.25, 76.95)
-)
+    lat, lon = district_coords.get(
+        district,
+        (43.25, 76.95)
+    )
 
-# приблизительные расстояния от центра Алматы
-district_distance = {
-    "Алмалинский": 2.0,
-    "Бостандыкский": 5.0,
-    "Ауэзовский": 7.0,
-    "Медеуский": 4.0,
-    "Турксибский": 9.0,
-    "Жетысуский": 6.0,
-    "Наурызбайский": 12.0,
-    "Алатауский": 10.0,
-    "Астана": 0,
-    "Другой": 8.0
-}
+    district_distance = {
+        "Алмалинский": 2.0,
+        "Бостандыкский": 5.0,
+        "Ауэзовский": 7.0,
+        "Медеуский": 4.0,
+        "Турксибский": 9.0,
+        "Жетысуский": 6.0,
+        "Наурызбайский": 12.0,
+        "Алатауский": 10.0,
+        "Астана": 0,
+        "Другой": 8.0
+    }
 
-distance_to_center = district_distance.get(
-    district,
-    8.0
-)
+    distance_to_center = district_distance.get(
+        district,
+        8.0
+    )
 
-# цена за квадратный метр
-# нужна только потому, что модель была обучена с этим признаком
+    price_per_m2 = 500000
 
-price_per_m2 = 500000
+    features = [[
+        area,
+        rooms,
+        floor,
+        total_floors,
+        lat,
+        lon,
+        distance_to_center,
+        floor_ratio,
+        price_per_m2
+    ]]
 
-features = [[
-    area,
-    rooms,
-    floor,
-    total_floors,
-    lat,
-    lon,
-    distance_to_center,
-    floor_ratio,
-    price_per_m2
-]]
-
-predicted_price = abs(
-    model.predict(features)[0]
-)
+    predicted_price = abs(
+        model.predict(features)[0]
+    )
 
     data = {
-        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
-        "district": district, "has_furniture": has_furniture,
-        "has_eurorepair": has_eurorepair, "new_building": new_building
+        "rooms": rooms,
+        "area": area,
+        "floor": floor,
+        "total_floors": total_floors,
+        "district": district,
+        "has_furniture": has_furniture,
+        "has_eurorepair": has_eurorepair,
+        "new_building": new_building
     }
 
     similar_df = hybrid_retrieve(data, k=6)
@@ -343,28 +345,63 @@ predicted_price = abs(
     col1, col2 = st.columns([1.1, 2])
 
     with col1:
-        st.metric("💰 Предсказанная цена", f"{int(predicted_price):,} ₸")
+
+        st.metric(
+            "💰 Предсказанная цена",
+            f"{int(predicted_price):,} ₸"
+        )
+
         st.subheader("📍 Параметры")
-        st.write(f"**Комнаты:** {rooms}")
-        st.write(f"**Площадь:** {area} м²")
-        st.write(f"**Этаж:** {floor}/{total_floors}")
-        st.write(f"**Район:** {district}")
+
+        st.write(f"Комнаты: {rooms}")
+        st.write(f"Площадь: {area} м²")
+        st.write(f"Этаж: {floor}/{total_floors}")
+        st.write(f"Район: {district}")
 
     with col2:
+
         st.subheader("📊 AI Анализ рынка")
-        with st.spinner("Генерируем отчёт..."):
-            analysis = rag_explanation(data, similar_df)
+
+        with st.spinner(
+            "Генерируем отчёт..."
+        ):
+
+            analysis = rag_explanation(
+                data,
+                similar_df
+            )
+
             st.markdown(analysis)
 
-    st.subheader("🔍 Сравнение с похожими квартирами")
+    st.subheader(
+        "🔍 Сравнение с похожими квартирами"
+    )
+
     if 'price' in similar_df.columns:
-        comp = similar_df[['rooms', 'area', 'floor', 'total_floors', 'price']].copy()
-        comp['₸/м²'] = (comp['price'] / comp['area']).round(0)
-        comp['Разница'] = (comp['price'] - predicted_price).round(0)
-        st.dataframe(comp.style.format({
-            "price": "{:,.0f} ₸",
-            "₸/м²": "{:,.0f}",
-            "Разница": "{:,.0f} ₸"
-        }), use_container_width=True, hide_index=True)
+
+        comp = similar_df[
+            ['rooms', 'area', 'floor',
+             'total_floors', 'price']
+        ].copy()
+
+        comp['₸/м²'] = (
+            comp['price'] /
+            comp['area']
+        ).round(0)
+
+        comp['Разница'] = (
+            comp['price'] -
+            predicted_price
+        ).round(0)
+
+        st.dataframe(
+            comp.style.format({
+                "price": "{:,.0f} ₸",
+                "₸/м²": "{:,.0f}",
+                "Разница": "{:,.0f} ₸"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
 
 st.caption("ValoraAI • Улучшенный парсер объявлений")
