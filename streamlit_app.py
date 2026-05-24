@@ -19,7 +19,6 @@ st.subheader("Intelligent Real Estate Valuation Platform powered by ML & AI")
 
 # ====================== OPENAI API KEY ======================
 api_key = None
-
 if "openai" in st.secrets:
     api_key = st.secrets["openai"].get("api_key") or st.secrets["openai"].get("API_KEY")
 elif "OPENAI_API_KEY" in st.secrets:
@@ -30,13 +29,9 @@ if not api_key:
 
 if not api_key or not api_key.startswith("sk-"):
     st.error("🔑 OpenAI API ключ не найден!")
-    st.info("""
-    Добавьте в **Settings → Secrets**:
-    ```toml
-    [openai]
-    api_key = "sk-ваш_ключ"
-""")
+    st.info("Добавьте ключ в Settings → Secrets")
     st.stop()
+
 client = OpenAI(api_key=api_key)
 st.success("✅ OpenAI подключён", icon="🔑")
 
@@ -50,8 +45,9 @@ def load_resources():
         index = faiss.read_index("faiss_index.bin")
         return model, df, embedding_model, index
     except Exception as e:
-        st.error(f"Ошибка загрузки файлов: {e}")
+        st.error(f"Ошибка загрузки: {e}")
         st.stop()
+
 model, df, embedding_model, index = load_resources()
 
 # ====================== ФУНКЦИИ ======================
@@ -63,23 +59,30 @@ def build_document(data):
 Мебель: {data.get("has_furniture")}
 Евроремонт: {data.get("has_eurorepair")}
 Новостройка: {data.get("new_building")}"""
+
 def retrieve_similar(query, k=5):
     query_vector = embedding_model.encode(query)
     query_vector = np.array([query_vector]).astype("float32")
     _, indices = index.search(query_vector, k)
     return df.iloc[indices[0]]
+
 def rag_explanation(data):
     query = build_document(data)
     similar = retrieve_similar(query, 5)
     context = "\n\n".join([build_document(row) for _, row in similar.iterrows()])
+
     prompt = f"""
 Ты эксперт недвижимости Казахстана.
+
 ЦЕЛЕВАЯ КВАРТИРА:
 {query}
+
 ПОХОЖИЕ КВАРТИРЫ:
 {context}
+
 Оцени: дорого / дешево / нормально? Почему? Приведи 3 причины. Отвечай на русском.
 """
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -89,6 +92,7 @@ def rag_explanation(data):
         temperature=0.3
     )
     return response.choices[0].message.content
+
 def summarize_listing(data):
     prompt = f"Составь краткую карточку квартиры:\n{build_document(data)}"
     response = client.chat.completions.create(
@@ -99,10 +103,14 @@ def summarize_listing(data):
 
 # ====================== SIDEBAR ======================
 st.sidebar.header("Параметры квартиры")
+
 rooms = st.sidebar.selectbox("Комнаты", [1, 2, 3, 4, 5])
 area = st.sidebar.number_input("Площадь (м²)", 10, 500, 60)
 floor = st.sidebar.number_input("Этаж", 1, 30, 3)
 total_floors = st.sidebar.number_input("Всего этажей", 1, 30, 9)
+
+# Новые поля для соответствия модели
+location = st.sidebar.selectbox("Район / Город", ["Алматы - Центр", "Алматы - Другие", "Астана", "Другой"])
 has_furniture = st.sidebar.checkbox("Мебель", True)
 has_eurorepair = st.sidebar.checkbox("Евроремонт")
 new_building = st.sidebar.checkbox("Новостройка")
@@ -112,35 +120,25 @@ luxury = st.sidebar.checkbox("Премиум")
 if st.button("🚀 Анализировать", type="primary"):
     floor_ratio = floor / total_floors if total_floors > 0 else 0
 
+    # Примерные значения для недостающих признаков
+    price_per_m2 = 0  # модель может не использовать его при предсказании
+    lon = 76.95 if "Алматы" in location else 71.43  # примерные координаты
+    lat = 43.25 if "Алматы" in location else 51.17
+    distance_to_center = 3.0 if "Центр" in location else 8.0
+
     features = [[
-        area, 
-        floor, 
-        total_floors, 
-        floor_ratio,
-        int(has_furniture), 
-        int(has_eurorepair),
-        int(new_building), 
-        int(luxury)
+        total_floors,      # 1
+        rooms,             # 2
+        price_per_m2,      # 3
+        lon,               # 4
+        lat,               # 5
+        floor_ratio,       # 6
+        floor,             # 7
+        distance_to_center,# 8
+        area               # 9
     ]]
 
-    # === ОТЛАДКА ===
-    st.write("🔍 **Отладка модели:**")
-    st.write(f"Количество признаков в features: **{len(features[0])}**")
-    
-    try:
-        if hasattr(model, 'n_features_in_'):
-            st.write(f"Модель ожидает признаков: **{model.n_features_in_}**")
-        if hasattr(model, 'feature_names_in_'):
-            st.write("Названия признаков:", model.feature_names_in_)
-    except:
-        pass
-
-    # Попытка предсказания
-    try:
-        predicted_price = model.predict(features)[0]
-    except Exception as e:
-        st.error(f"Ошибка предсказания: {e}")
-        st.stop()
+    predicted_price = model.predict(features)[0]
 
     data = {
         "rooms": rooms,
