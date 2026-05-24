@@ -5,6 +5,7 @@ import pickle
 import faiss
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
+from rank_bm25 import BM25Okapi
 import os
 
 # ====================== КОНФИГУРАЦИЯ ======================
@@ -12,7 +13,7 @@ st.set_page_config(page_title="ValoraAI", page_icon="🏠", layout="wide")
 
 st.title("🏠 ValoraAI")
 st.subheader("Интеллектуальная оценка недвижимости Казахстана")
-st.markdown("**ML + Оптимизированный RAG**")
+st.markdown("**ML + Hybrid RAG + Продвинутый AI-анализ**")
 
 # ====================== OPENAI ======================
 api_key = st.secrets.get("openai", {}).get("api_key") or os.getenv("OPENAI_API_KEY")
@@ -28,148 +29,109 @@ def load_resources():
     model = pickle.load(open("model.pkl", "rb"))
     df = pd.read_csv("krisha_full_with_desc.csv")
     
-    # Оптимальная модель для русского языка + совместима с текущим индексом
     embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    
     index = faiss.read_index("faiss_index.bin")
-    return model, df, embedding_model, index
+    
+    # Подготовка BM25
+    tokenized_corpus = [doc.split() for doc in df['description'].fillna('').astype(str)]
+    bm25 = BM25Okapi(tokenized_corpus)
+    
+    return model, df, embedding_model, index, bm25
 
-model, df, embedding_model, index = load_resources()
+model, df, embedding_model, index, bm25 = load_resources()
 
 # ====================== СПРАВОЧНИК ======================
-district_coords = {
-    "Алмалинский": (43.2567, 76.9286), "Бостандыкский": (43.2220, 76.8512),
-    "Ауэзовский": (43.2560, 76.8300), "Медеуский": (43.2639, 76.9780),
-    "Турксибский": (43.3170, 76.9000), "Жетысуский": (43.3000, 76.9500),
-    "Наурызбайский": (43.1800, 76.8000), "Алатауский": (43.2500, 76.7500),
-    "Астана": (51.1694, 71.4491), "Другой": (43.25, 76.95)
-}
+district_coords = { ... }  # оставь свой словарь
 
-# ====================== ФУНКЦИИ ======================
+# ====================== УЛУЧШЕННЫЕ ФУНКЦИИ ======================
 def build_document(data):
-    return f"""Комнаты: {data.get("rooms")}
-Площадь: {data.get("area")} м²
-Этаж: {data.get("floor")}/{data.get("total_floors")}
-Район: {data.get("district", "Не указан")}
-Мебель: {"Да" if data.get("has_furniture") else "Нет"}
-Евроремонт: {"Да" if data.get("has_eurorepair") else "Нет"}
-Новостройка: {"Да" if data.get("new_building") else "Нет"}"""
+    """Улучшенное структурированное описание"""
+    return f"""Квартира на продажу:
+- Комнат: {data.get("rooms")}
+- Общая площадь: {data.get("area")} м²
+- Этаж: {data.get("floor")} из {data.get("total_floors")}
+- Район: {data.get("district", "Не указан")}
+- Мебель: {"Есть" if data.get("has_furniture") else "Нет"}
+- Евроремонт: {"Есть" if data.get("has_eurorepair") else "Нет"}
+- Новостройка: {"Да" if data.get("new_building") else "Нет"}
+- Премиум: {"Да" if data.get("luxury", False) else "Нет"}"""
 
-def retrieve_similar(data, k=6):
-    # Предфильтрация по ключевым параметрам
-    filtered = df.copy()
-    
-    if data.get("rooms"):
-        filtered = filtered[filtered['rooms'] == data.get("rooms")]
-    
-    area = data.get("area", 60)
-    filtered = filtered[filtered['area'].between(area * 0.65, area * 1.45)]
-    
-    if len(filtered) < 5:
-        filtered = df
-    
-    # Семантический поиск
+def hybrid_retrieve(data, k=6):
+    """Hybrid Search: Dense + BM25"""
     query_text = build_document(data)
-    query_vector = np.array([embedding_model.encode(query_text)]).astype("float32")
     
-    _, indices = index.search(query_vector, k)
-    return df.iloc[indices[0]]
+    # Dense Retrieval (семантический поиск)
+    query_vector = np.array([embedding_model.encode(query_text)]).astype("float32")
+    _, dense_indices = index.search(query_vector, k*2)
+    dense_results = df.iloc[dense_indices[0]]
+    
+    # BM25 (ключевой поиск)
+    tokenized_query = query_text.split()
+    bm25_scores = bm25.get_scores(tokenized_query)
+    bm25_top_indices = np.argsort(bm25_scores)[-k*2:][::-1]
+    bm25_results = df.iloc[bm25_top_indices]
+    
+    # Простое комбинирование (можно улучшить reranking'ом позже)
+    combined = pd.concat([dense_results, bm25_results]).drop_duplicates().head(k*2)
+    
+    # Финальная выборка
+    return combined.head(k)
 
 def rag_explanation(data, similar_df):
+    """Улучшенный промпт для качественных объяснений"""
     query = build_document(data)
     context = "\n\n".join([build_document(row) for _, row in similar_df.iterrows()])
 
     prompt = f"""
-Ты эксперт недвижимости Казахстана.
+Ты — опытный риелтор-аналитик с 10-летним опытом на рынке Казахстана (Алматы и Астана).
 
-ЦЕЛЕВАЯ КВАРТИРА:
+**ЦЕЛЕВАЯ КВАРТИРА:**
 {query}
 
-ПОХОЖИЕ КВАРТИРЫ:
+**ПОХОЖИЕ ОБЪЕКТЫ НА РЫНКЕ:**
 {context}
 
-Дай честный анализ:
-- Квартира стоит дорого, дешево или по рынку?
-- Почему?
-- 3 ключевые причины
-- Рекомендации покупателю
+Проведи глубокий анализ и ответь максимально понятно и профессионально:
 
-Отвечай на русском, по делу.
+1. **Общая оценка**: Квартира стоит **дорого**, **дешево** или **по рынку**?
+2. **Обоснование**: Почему именно такая цена? Какие факторы влияют сильнее всего?
+3. **3 ключевые причины** твоего вывода.
+4. **Рекомендации** покупателю (стоит ли рассматривать, на что обратить внимание).
+
+Используй естественный, уверенный и человечный язык. Избегай шаблонных фраз.
 """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
+        messages=[
+            {"role": "system", "content": "Ты эксперт по недвижимости высшего уровня."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.4,
+        max_tokens=700
     )
     return response.choices[0].message.content
 
-# ====================== SIDEBAR ======================
-st.sidebar.header("📋 Параметры квартиры")
-
-rooms = st.sidebar.selectbox("Комнаты", [1,2,3,4,5])
-area = st.sidebar.number_input("Площадь (м²)", 10, 500, 60)
-floor = st.sidebar.number_input("Этаж", 1, 30, 3)
-total_floors = st.sidebar.number_input("Всего этажей", 1, 30, 9)
-district = st.sidebar.selectbox("Район", list(district_coords.keys()))
-
-has_furniture = st.sidebar.checkbox("Мебель", True)
-has_eurorepair = st.sidebar.checkbox("Евроремонт")
-new_building = st.sidebar.checkbox("Новостройка")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📝 Данные из объявления")
-user_description = st.sidebar.text_area("Описание объявления", height=100)
-real_price = st.sidebar.number_input("Реальная цена из объявления (₸)", min_value=0, value=0, step=10000)
+# ====================== SIDEBAR (оставляем как было) ======================
+# ... (тот же код sidebar'а)
 
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Проанализировать", type="primary"):
-    floor_ratio = floor / total_floors if total_floors > 0 else 0
-    lat, lon = district_coords[district]
-    distance_to_center = 2.5 if district in ["Алмалинский", "Медеуский"] else 6.0
+    # ... (твой код расчёта predicted_price)
 
-    features = [[total_floors, rooms, 0, lon, lat, floor_ratio, floor, distance_to_center, area]]
-    predicted_price = abs(model.predict(features)[0])
+    data = { ... }  # как было
 
-    data = {
-        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
-        "district": district, "has_furniture": has_furniture,
-        "has_eurorepair": has_eurorepair, "new_building": new_building
-    }
+    # Используем Hybrid Search
+    similar_df = hybrid_retrieve(data, k=6)
 
-    similar_df = retrieve_similar(data, k=6)
-
-    col1, col2 = st.columns([1.1, 2])
-
-    with col1:
-        st.metric("💰 Предсказанная цена", f"{int(predicted_price):,} ₸")
-        if real_price > 0:
-            diff = real_price - predicted_price
-            st.metric("📌 Цена в объявлении", f"{int(real_price):,} ₸", 
-                     delta=f"{int(diff):,} ₸ {'дороже' if diff > 0 else 'дешевле'}")
-
-        st.subheader("📍 Параметры")
-        st.write(f"**Комнаты:** {rooms}")
-        st.write(f"**Площадь:** {area} м²")
-        st.write(f"**Этаж:** {floor}/{total_floors}")
-        st.write(f"**Район:** {district}")
+    # Вывод (col1, col2) — оставь как в предыдущей версии
 
     with col2:
         st.subheader("📊 AI Анализ рынка")
-        with st.spinner("Анализируем..."):
+        with st.spinner("Генерируем профессиональный отчёт..."):
             analysis = rag_explanation(data, similar_df)
             st.markdown(analysis)
 
-    st.subheader("🔍 Сравнение с похожими квартирами")
-    if 'price' in similar_df.columns:
-        comp = similar_df[['rooms', 'area', 'floor', 'total_floors', 'price']].copy()
-        comp['₸/м²'] = (comp['price'] / comp['area']).round(0)
-        comp['Разница'] = (comp['price'] - predicted_price).round(0)
-        
-        st.dataframe(comp.style.format({
-            "price": "{:,.0f} ₸",
-            "₸/м²": "{:,.0f}",
-            "Разница": "{:,.0f} ₸"
-        }), use_container_width=True, hide_index=True)
+    # Сравнение — оставь как было
 
-st.caption("ValoraAI • RAG оптимизирован (paraphrase-multilingual-MiniLM-L12-v2)")
+st.caption("ValoraAI • Hybrid RAG + Улучшенный промпт")
