@@ -119,23 +119,18 @@ def retrieve_similar(query,k=5):
 
 def rag_explanation(data):
 
-    query=build_document(data)
+    query = build_document(data)
 
-    similar=retrieve_similar(
+    similar = retrieve_similar(
         query,
         5
     )
 
-    context="
-
-".join(
-
+    context = "\n".join(
         similar.apply(
-            lambda x:
-            build_document(x),
+            lambda x: build_document(x),
             axis=1
         )
-
     )
 
     prompt=f"""
