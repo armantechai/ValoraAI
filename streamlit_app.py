@@ -14,7 +14,7 @@ st.set_page_config(page_title="ValoraAI", page_icon="🏠", layout="wide")
 
 st.title("🏠 ValoraAI")
 st.subheader("Интеллектуальная оценка недвижимости Казахстана")
-st.markdown("**ML + Hybrid RAG + Автоматический парсинг объявлений**")
+st.markdown("**Автоматический парсинг + Hybrid RAG**")
 
 # ====================== OPENAI ======================
 api_key = st.secrets.get("openai", {}).get("api_key") or os.getenv("OPENAI_API_KEY")
@@ -39,15 +39,29 @@ def load_resources():
 
 model, df, embedding_model, index, bm25 = load_resources()
 
+# ====================== СПРАВОЧНИК РАЙОНОВ ======================
+district_coords = {
+    "Алмалинский": (43.2567, 76.9286),
+    "Бостандыкский": (43.2220, 76.8512),
+    "Ауэзовский": (43.2560, 76.8300),
+    "Медеуский": (43.2639, 76.9780),
+    "Турксибский": (43.3170, 76.9000),
+    "Жетысуский": (43.3000, 76.9500),
+    "Наурызбайский": (43.1800, 76.8000),
+    "Алатауский": (43.2500, 76.7500),
+    "Астана": (51.1694, 71.4491),
+    "Другой": (43.25, 76.95)
+}
+
 # ====================== ПАРСЕР ======================
 def parse_listing_text(text):
     prompt = f"""
 Извлеки параметры из объявления о продаже квартиры. Верни только JSON.
 
-Текст объявления:
+Текст:
 {text}
 
-Формат ответа (строго JSON):
+Формат (строго JSON):
 {{
   "rooms": число,
   "area": число,
@@ -73,7 +87,7 @@ def parse_listing_text(text):
     except:
         return None
 
-# ====================== ФУНКЦИИ ======================
+# ====================== ОСНОВНЫЕ ФУНКЦИИ ======================
 def build_document(data):
     return f"""Квартира:
 - Комнат: {data.get("rooms")}
@@ -115,7 +129,7 @@ def rag_explanation(data, similar_df):
 - Дорого / Дешево / По рынку?
 - Почему?
 - 3 ключевые причины
-- Рекомендации покупателю (стоит ли брать, на что обратить внимание, риски)
+- Рекомендации покупателю
 
 Отвечай уверенно и по делу на русском.
 """
@@ -130,7 +144,7 @@ def rag_explanation(data, similar_df):
 # ====================== SIDEBAR ======================
 st.sidebar.header("📋 Параметры квартиры")
 
-# Инициализация session_state
+# Session State для автозаполнения
 if 'parsed_data' not in st.session_state:
     st.session_state.parsed_data = None
 
@@ -146,44 +160,34 @@ new_building = st.sidebar.checkbox("Новостройка")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📄 Парсинг объявления")
-raw_text = st.sidebar.text_area("Вставьте текст объявления", height=150)
+raw_text = st.sidebar.text_area("Вставьте текст объявления", height=140)
 
-if st.sidebar.button("🔍 Извлечь параметры"):
+if st.sidebar.button("🔍 Извлечь параметры из текста"):
     if raw_text.strip():
-        with st.spinner("Парсим объявление..."):
+        with st.spinner("Парсим..."):
             parsed = parse_listing_text(raw_text)
             if parsed:
                 st.session_state.parsed_data = parsed
-                st.sidebar.success("✅ Параметры извлечены!")
+                st.sidebar.success("✅ Параметры извлечены и применены!")
             else:
                 st.sidebar.error("Не удалось распарсить")
     else:
-        st.sidebar.warning("Введите текст")
+        st.sidebar.warning("Введите текст объявления")
 
-# Автозаполнение из session_state
+# Автозаполнение боковой панели
 if st.session_state.parsed_data:
     p = st.session_state.parsed_data
-    rooms = p.get("rooms", rooms)
-    area = p.get("area", area)
-    floor = p.get("floor", floor)
-    total_floors = p.get("total_floors", total_floors)
-    district = p.get("district") if p.get("district") in district_coords else district
+    rooms = p.get("rooms", rooms) if p.get("rooms") else rooms
+    area = p.get("area", area) if p.get("area") else area
+    floor = p.get("floor", floor) if p.get("floor") else floor
+    total_floors = p.get("total_floors", total_floors) if p.get("total_floors") else total_floors
+    if p.get("district") in district_coords:
+        district = p.get("district")
     has_furniture = p.get("has_furniture", has_furniture)
     has_eurorepair = p.get("has_eurorepair", has_eurorepair)
     new_building = p.get("new_building", new_building)
 
 # ====================== АНАЛИЗ ======================
 if st.button("🚀 Проанализировать", type="primary"):
-    # ... (твой код расчёта predicted_price и data)
-
-    data = {
-        "rooms": rooms, "area": area, "floor": floor, "total_floors": total_floors,
-        "district": district, "has_furniture": has_furniture,
-        "has_eurorepair": has_eurorepair, "new_building": new_building
-    }
-
-    similar_df = hybrid_retrieve(data, k=6)
-
-    # Вывод результатов (col1, col2, таблица сравнения) — как в предыдущих версиях
-
-st.caption("ValoraAI • Автоматический парсинг + Hybrid RAG")
+    floor_ratio = floor / total_floors if total_floors > 0 else 0
+    lat, lon = district_coords.get(district, (43.
