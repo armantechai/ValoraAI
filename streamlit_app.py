@@ -143,7 +143,7 @@ def build_document(data):
 - Евроремонт: {"Есть" if data.get("has_eurorepair") else "Нет"}
 - Новостройка: {"Да" if data.get("new_building") else "Нет"}"""
 
-# hybrid_retrieve и rag_explanation оставляем как в предыдущей версии
+# hybrid_retrieve и rag_explanation
 def hybrid_retrieve(data, k=6):
 
     query_text = build_document(data)
@@ -252,7 +252,7 @@ new_building = st.sidebar.checkbox("Новостройка")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📄 Парсинг объявления")
-raw_text = st.sidebar.text_area("Вставьте текст объявления", height=160)
+raw_text = st.sidebar.text_area("Вставьте текст объявления", height=180)
 
 if st.sidebar.button("🔍 Извлечь параметры из текста"):
     if raw_text.strip():
