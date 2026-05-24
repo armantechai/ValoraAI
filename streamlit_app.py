@@ -48,7 +48,7 @@ def load_resources():
             df = pd.read_csv("krisha_full_with_desc.csv")
         
         with st.spinner("Загружаем эмбеддинги..."):
-            embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
         
         with st.spinner("Загружаем индекс поиска..."):
             index = faiss.read_index("faiss_index.bin")
